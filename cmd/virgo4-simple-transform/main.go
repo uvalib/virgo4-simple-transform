@@ -3,10 +3,14 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+
+	"github.com/antchfx/xmlquery"
 )
 
 //
@@ -49,7 +53,7 @@ func main() {
 
 	for {
 
-		log.Printf("Waiting for messages...")
+		//log.Printf("Waiting for messages...")
 
 		result, err := svc.ReceiveMessage( &sqs.ReceiveMessageInput{
 			//AttributeNames: []*string{
@@ -70,7 +74,8 @@ func main() {
 		// print and then delete
 		if len( result.Messages ) != 0 {
 
-			log.Printf("Received %d messages", len( result.Messages ) )
+			//log.Printf("Received %d messages", len( result.Messages ) )
+			start := time.Now()
 
 			for _, m := range result.Messages {
 
@@ -114,15 +119,22 @@ func main() {
 				}
 			}
 
-			log.Printf("Transformed and sent %d messages", len( result.Messages ) )
+			duration := time.Since(start)
+			log.Printf("Transformed and sent %d messages (%0.2f tps)", len( result.Messages ), float64( len( result.Messages ) ) / duration.Seconds() )
 
 		} else {
-			log.Printf("No messages received...")
+			log.Printf("No messages available")
 		}
 	}
 }
 
 func transform( transformName string, body string ) string {
+
+	// parse the XML
+	_, err := xmlquery.Parse( strings.NewReader( body ) )
+	if err != nil {
+		log.Fatal( err )
+	}
 
 	return body
 }
