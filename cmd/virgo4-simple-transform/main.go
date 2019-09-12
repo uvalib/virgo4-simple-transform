@@ -80,61 +80,62 @@ func main() {
 			for _, m := range result.Messages {
 
 				// apply our transform
-				transformed := transform( cfg.TransformName, *m.Body )
+				transformed, err := transform( cfg.TransformName, *m.Body )
 
-				_, err := svc.SendMessage( &sqs.SendMessageInput{
-					MessageAttributes: map[string]*sqs.MessageAttributeValue{
-						"op": &sqs.MessageAttributeValue{
-							DataType:    aws.String("String"),
-							StringValue: aws.String("add"),
+				if err == nil {
+
+					_, err := svc.SendMessage(&sqs.SendMessageInput{
+						MessageAttributes: map[string]*sqs.MessageAttributeValue{
+							"op": &sqs.MessageAttributeValue{
+								DataType:    aws.String("String"),
+								StringValue: aws.String("add"),
+							},
+							"src": &sqs.MessageAttributeValue{
+								DataType:    aws.String("String"),
+								StringValue: aws.String(cfg.InQueueName),
+							},
+							"dst": &sqs.MessageAttributeValue{
+								DataType:    aws.String("String"),
+								StringValue: aws.String(cfg.OutQueueName),
+							},
+							//"type": &sqs.MessageAttributeValue{
+							//	DataType:    aws.String("String"),
+							//	StringValue: aws.String( "text" ),
+							//},
 						},
-						"src": &sqs.MessageAttributeValue{
-							DataType:    aws.String("String"),
-							StringValue: aws.String( cfg.InQueueName ),
-						},
-						"dst": &sqs.MessageAttributeValue{
-							DataType:    aws.String("String"),
-							StringValue: aws.String( cfg.OutQueueName ),
-						},
-						//"type": &sqs.MessageAttributeValue{
-						//	DataType:    aws.String("String"),
-						//	StringValue: aws.String( "text" ),
-						//},
-					},
-					MessageBody: aws.String( transformed ),
-					QueueUrl:    outQueueUrl,
-				})
+						MessageBody: aws.String(transformed),
+						QueueUrl:    outQueueUrl,
+					})
 
-				if err != nil {
-					log.Fatal( err )
-				}
+					if err != nil {
+						log.Fatal(err)
+					}
 
-				_, err = svc.DeleteMessage(&sqs.DeleteMessageInput{
-					QueueUrl:      inQueueUrl,
-					ReceiptHandle: m.ReceiptHandle,
-				})
+					_, err = svc.DeleteMessage(&sqs.DeleteMessageInput{
+						QueueUrl:      inQueueUrl,
+						ReceiptHandle: m.ReceiptHandle,
+					})
 
-				if err != nil {
-					log.Fatal( err )
+					if err != nil {
+						log.Fatal(err)
+					}
+				} else {
+					log.Printf("Transform error (%s), record ignored", err )
 				}
 			}
 
 			duration := time.Since(start)
-			log.Printf("Transformed and sent %d messages (%0.2f tps)", len( result.Messages ), float64( len( result.Messages ) ) / duration.Seconds() )
+			log.Printf("Transformed and sent %d records (%0.2f tps)", len( result.Messages ), float64( len( result.Messages ) ) / duration.Seconds() )
 
 		} else {
-			log.Printf("No messages available")
+			log.Printf("No records available")
 		}
 	}
 }
 
-func transform( transformName string, body string ) string {
+func transform( transformName string, body string ) ( string, error ) {
 
 	// parse the XML
 	_, err := xmlquery.Parse( strings.NewReader( body ) )
-	if err != nil {
-		log.Fatal( err )
-	}
-
-	return body
+	return body, err
 }
