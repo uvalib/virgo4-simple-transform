@@ -6,10 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sqs"
-
 	"github.com/antchfx/xmlquery"
 )
 
@@ -23,119 +19,92 @@ func main() {
 	// Get config params and use them to init service context. Any issues are fatal
 	cfg := LoadConfiguration()
 
-	sess, err := session.NewSession( )
+	// load our AWS_SQS helper object
+	aws, err := NewAwsSqs( AwsSqsConfig{ } )
 	if err != nil {
 		log.Fatal( err )
 	}
 
-	svc := sqs.New(sess)
-
-	// get the queue URL's from the name
-	result, err := svc.GetQueueUrl( &sqs.GetQueueUrlInput{
-		QueueName: aws.String( cfg.InQueueName ),
-	})
-
+	// get the queue handles from the queue name
+	inQueueHandle, err := aws.QueueHandle( cfg.InQueueName )
 	if err != nil {
 		log.Fatal( err )
 	}
 
-	inQueueUrl := result.QueueUrl
-
-	result, err = svc.GetQueueUrl( &sqs.GetQueueUrlInput{
-		QueueName: aws.String( cfg.OutQueueName ),
-	})
-
+	outQueueHandle, err := aws.QueueHandle( cfg.OutQueueName )
 	if err != nil {
 		log.Fatal( err )
 	}
-
-	outQueueUrl := result.QueueUrl
 
 	for {
 
 		//log.Printf("Waiting for messages...")
+		start := time.Now()
 
-		result, err := svc.ReceiveMessage( &sqs.ReceiveMessageInput{
-			//AttributeNames: []*string{
-			//	aws.String( sqs.QueueAttributeNameAll ),
-			//},
-			MessageAttributeNames: []*string{
-				aws.String(sqs.QueueAttributeNameAll ),
-			},
-			QueueUrl:            inQueueUrl,
-			MaxNumberOfMessages: aws.Int64(10),
-			WaitTimeSeconds:     aws.Int64( cfg.PollTimeOut ),
-		})
-
+		// wait for a batch of messages
+		messages, err := aws.BatchMessageGet( inQueueHandle, uint( MAX_SQS_BLOCK_COUNT), time.Duration( cfg.PollTimeOut ) * time.Second )
 		if err != nil {
 			log.Fatal( err )
 		}
 
-		// print and then delete
-		if len( result.Messages ) != 0 {
+		// did we receive any?
+		sz := len( messages )
+		if sz != 0 {
 
 			//log.Printf("Received %d messages", len( result.Messages ) )
-			start := time.Now()
 
-			for _, m := range result.Messages {
+			for _, m := range messages {
 
 				// apply our transform
-				transformed, err := transform( cfg.TransformName, *m.Body )
-
+				transformed, err := transform( cfg.TransformName, m.Payload )
 				if err == nil {
-
-					_, err := svc.SendMessage(&sqs.SendMessageInput{
-						MessageAttributes: map[string]*sqs.MessageAttributeValue{
-							"op": &sqs.MessageAttributeValue{
-								DataType:    aws.String("String"),
-								StringValue: aws.String("add"),
-							},
-							"src": &sqs.MessageAttributeValue{
-								DataType:    aws.String("String"),
-								StringValue: aws.String(cfg.InQueueName),
-							},
-							"dst": &sqs.MessageAttributeValue{
-								DataType:    aws.String("String"),
-								StringValue: aws.String(cfg.OutQueueName),
-							},
-							//"type": &sqs.MessageAttributeValue{
-							//	DataType:    aws.String("String"),
-							//	StringValue: aws.String( "text" ),
-							//},
-						},
-						MessageBody: aws.String(transformed),
-						QueueUrl:    outQueueUrl,
-					})
-
-					if err != nil {
-						log.Fatal(err)
-					}
-
-					_, err = svc.DeleteMessage(&sqs.DeleteMessageInput{
-						QueueUrl:      inQueueUrl,
-						ReceiptHandle: m.ReceiptHandle,
-					})
-
-					if err != nil {
-						log.Fatal(err)
-					}
+                   m.Payload = transformed
 				} else {
-					log.Printf("Transform error (%s), record ignored", err )
+					log.Printf("WARNING: transform error (%s), message unchanged", err )
+				}
+			}
+
+			opStatus, err := aws.BatchMessagePut( outQueueHandle, messages )
+			if err != nil {
+				log.Fatal( err )
+			}
+
+			// check the operation results
+			for ix, op := range opStatus {
+				if op == false {
+					log.Printf( "WARNING: message %d failed to send to outbound queue", ix )
+				}
+			}
+
+			// delete them all anyway
+			opStatus, err = aws.BatchMessageDelete( inQueueHandle, messages )
+			if err != nil {
+				log.Fatal( err )
+			}
+
+			// check the operation results
+			for ix, op := range opStatus {
+				if op == false {
+					log.Printf( "WARNING: message %d failed to delete", ix )
 				}
 			}
 
 			duration := time.Since(start)
-			log.Printf("Transformed and sent %d records (%0.2f tps)", len( result.Messages ), float64( len( result.Messages ) ) / duration.Seconds() )
+			log.Printf("Transformed and sent %d records (%0.2f tps)", sz, float64( sz ) / duration.Seconds() )
 
 		} else {
-			log.Printf("No records available")
+			log.Printf("No messages received...")
 		}
 	}
 }
 
-func transform( transformName string, body string ) ( string, error ) {
+func transform( transformName string, body Payload ) ( Payload, error ) {
 
 	// parse the XML
-	_, err := xmlquery.Parse( strings.NewReader( body ) )
+	_, err := xmlquery.Parse( strings.NewReader( string( body ) ) )
 	return body, err
 }
+
+//
+// end of file
+//
