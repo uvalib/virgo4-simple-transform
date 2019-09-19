@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uvalib/virgo4-sqs-sdk/awssqs"
 	"github.com/antchfx/xmlquery"
 )
 
@@ -20,7 +21,7 @@ func main() {
 	cfg := LoadConfiguration()
 
 	// load our AWS_SQS helper object
-	aws, err := NewAwsSqs( AwsSqsConfig{ } )
+	aws, err := awssqs.NewAwsSqs( awssqs.AwsSqsConfig{ } )
 	if err != nil {
 		log.Fatal( err )
 	}
@@ -42,7 +43,7 @@ func main() {
 		start := time.Now()
 
 		// wait for a batch of messages
-		messages, err := aws.BatchMessageGet( inQueueHandle, uint( MAX_SQS_BLOCK_COUNT), time.Duration( cfg.PollTimeOut ) * time.Second )
+		messages, err := aws.BatchMessageGet( inQueueHandle, awssqs.MAX_SQS_BLOCK_COUNT, time.Duration( cfg.PollTimeOut ) * time.Second )
 		if err != nil {
 			log.Fatal( err )
 		}
@@ -98,7 +99,7 @@ func main() {
 	}
 }
 
-func transform( transformName string, body Payload ) ( Payload, error ) {
+func transform( transformName string, body awssqs.Payload ) ( awssqs.Payload, error ) {
 
 	// parse the XML
 	_, err := xmlquery.Parse( strings.NewReader( string( body ) ) )
