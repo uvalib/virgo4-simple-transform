@@ -7,10 +7,10 @@ import (
 
 // ServiceConfig defines all of the service configuration parameters
 type ServiceConfig struct {
-	InQueueName    string
-	OutQueueName   string
-	TransformName  string
-	PollTimeOut    int64
+	InQueueName   string
+	OutQueueName  string
+	TransformName string
+	PollTimeOut   int64
 }
 
 // LoadConfiguration will load the service configuration from env/cmdline
@@ -26,10 +26,10 @@ func LoadConfiguration() *ServiceConfig {
 
 	flag.Parse()
 
-	log.Printf("[CONFIG] InQueueName          = [%s]", cfg.InQueueName )
-	log.Printf("[CONFIG] OutQueueName         = [%s]", cfg.OutQueueName )
-	log.Printf("[CONFIG] TransformName        = [%s]", cfg.TransformName )
-	log.Printf("[CONFIG] PollTimeOut          = [%d]", cfg.PollTimeOut )
+	log.Printf("[CONFIG] InQueueName          = [%s]", cfg.InQueueName)
+	log.Printf("[CONFIG] OutQueueName         = [%s]", cfg.OutQueueName)
+	log.Printf("[CONFIG] TransformName        = [%s]", cfg.TransformName)
+	log.Printf("[CONFIG] PollTimeOut          = [%d]", cfg.PollTimeOut)
 
 	return &cfg
 }
